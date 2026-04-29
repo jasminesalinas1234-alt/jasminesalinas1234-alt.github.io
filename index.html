@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Valex CRM"/>
+<meta name="theme-color" content="#111111"/>
+<title>Valex Details CRM</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body,#root{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#111;color:#111}
+input,select,textarea,button{font-family:inherit}
+input,select,textarea{font-size:16px!important}
+button{cursor:pointer;-webkit-appearance:none}
+.scroll{overflow-y:auto;-webkit-overflow-scrolling:touch}
+::-webkit-scrollbar{display:none}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-10px)}40%{transform:translateX(10px)}60%{transform:translateX(-8px)}80%{transform:translateX(8px)}}
+@media print{.no-print{display:none!important}body{overflow:visible!important}#root{height:auto!important}}
+</style>
+</head>
+<body>
+<div id="root" style="height:100%"></div>
+<script>
+const DB_KEY="valex_crm_v3";
+const PIN="2415";
+const SES="valex_ses_v3";
+const DB={
+  get:(k)=>{try{return JSON.parse(localStorage.getItem(DB_KEY)||"{}")[k]||null;}catch(e){return null;}},
+  set:(k,v)=>{try{const a=JSON.parse(localStorage.getItem(DB_KEY)||"{}");a[k]=v;localStorage.setItem(DB_KEY,JSON.stringify(a));}catch(e){}},
+  all:()=>{try{return JSON.parse(localStorage.getItem(DB_KEY)||"{}");}catch(e){return {};}}
+};
+// Opens iPhone Messages app with pre-written text
+const sms=(phone,text)=>{
+  const n=phone.replace(/\D/g,"");
+  window.location.href="sms:"+n+"&body="+encodeURIComponent(text);
+};
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script type="text/babel">
+const {useState,useEffect,useRef}=React;
+const R="#c0392b",BK="#111",WH="#fff",GY="#f5f5f5",MT="#777",BD="#e0e0e0";
+const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+const SERVICES=["Full Detail","Interior Detail","Exterior Wash & Wax","Ceramic Coating","Paint Correction","Clay Bar Treatment","Engine Bay Detail","Headlight Restoration","Odor Elimination","Express Wash","Custom Package"];
+const TIMES=["8:00 AM","8:30 AM","9:00 AM","9:30 AM","10:00 AM","10:30 AM","11:00 AM","11:30 AM","12:00 PM","1:00 PM","1:30 PM","2:00 PM","2:30 PM","3:00 PM","3:30 PM","4:00 PM","4:30 PM","5:00 PM"];
+const WX=[{h:"7AM",t:62,i:"🌤",d:"Partly Cloudy"},{h:"8AM",t:65,i:"☀️",d:"Sunny"},{h:"9AM",t:69,i:"☀️",d:"Sunny"},{h:"10AM",t:73,i:"☀️",d:"Sunny"},{h:"11AM",t:76,i:"🌤",d:"Mostly Sunny"},{h:"12PM",t:79,i:"⛅",d:"Partly Cloudy"},{h:"1PM",t:81,i:"⛅",d:"Partly Cloudy"},{h:"2PM",t:82,i:"🌤",d:"Mostly Sunny"},{h:"3PM",t:81,i:"🌤",d:"Mostly Sunny"},{h:"4PM",t:79,i:"⛅",d:"Partly Cloudy"},{h:"5PM",t:75,i:"🌥",d:"Mostly Cloudy"},{h:"6PM",t:71,i:"🌥",d:"Mostly Cloudy"},{h:"7PM",t:68,i:"🌙",d:"Clear"}];
+
+// ── MESSAGE TEMPLATES ─────────────────────────────────────────────────────────
+const T={
+deposit:(name,svc,date,time)=>
+`Hey ${name.split(” “)[0]}! 👋 This is Valeria from Valex Details.
+
+Your appointment request:
+📋 ${svc}
+📅 ${date} at ${time}
+
+To lock in your spot, please send a $25 deposit:
+💚 Zelle → 909-329-4531
+💵 Cash App → $ValexDetails
+🍎 Apple Pay → 909-329-4531
+
+Memo: your name + date.
+I’ll confirm once received! — Valex Details 🚗✨`,
+
+confirm:(name,svc,date,time)=>
+`Hey ${name.split(” “)[0]}! ✅ Your appointment is CONFIRMED!
+
+📋 ${svc}
+📅 ${date} at ${time}
+📍 Fontana, CA
+
+See you then! — Valex Details 🚗`,
+
+remind60:(name)=>
+`Hey ${name.split(" ")[0]}! ⏰ Just letting you know your appointment is coming up in 1 hour. See you soon! — Valex Details 🚗`,
+
+remind30:(name)=>
+`Hey ${name.split(" ")[0]}! ⏱ Your appointment is coming up in 30 minutes. See you soon! — Valex Details 🚗`,
+
+invoice:(name,id,amount,due)=>
+`Hey ${name.split(” “)[0]}! 📄 Your invoice from Valex Details is ready.
+
+Invoice: ${id}
+Amount Due: $${amount}
+Due Date: ${due}
+
+Send payment to:
+💚 Zelle → 909-329-4531
+💵 Cash App → $ValexDetails
+🍎 Apple Pay → 909-329-4531
+
+Thank you! — Valex Details 🚗`,
+
+reschedule:(name,svc,date,time)=>
+`Hey ${name.split(” “)[0]}! 📅 Your appointment has been rescheduled.
+
+📋 ${svc}
+📅 New Date: ${date} at ${time}
+
+Let me know if this works! — Valex Details 🚗`,
+
+cancel:(name)=>
+`Hey ${name.split(" ")[0]}! Your Valex Details appointment has been cancelled. Reach out to rebook anytime! — Valex Details 🚗`,
+
+weather:(name,temp,desc)=>
+`Hey ${name.split(" ")[0]}! ☁️ Heads up — it's ${temp}°F and ${desc.toLowerCase()} in Fontana today. Your appointment is still on! Reach out if you need to reschedule. — Valex Details 🚗`,
+};
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+const tot=inv=>inv.items.reduce((s,i)=>s+i.q*i.p,0);
+const dlabel=s=>({AwaitingDeposit:“🔒 Awaiting Deposit”,DepositPaid:“💰 Deposit Received”,OwnerConfirmed:“✅ Confirmed”,Cancelled:“Cancelled”}[s]||s);
+const dcolor=s=>({AwaitingDeposit:{bg:”#fee2e2”,c:R},DepositPaid:{bg:”#fef3c7”,c:”#92400e”},OwnerConfirmed:{bg:BK,c:WH},Cancelled:{bg:GY,c:MT}}[s]||{bg:GY,c:MT});
+const icolor=s=>({Draft:{bg:GY,c:MT},Sent:{bg:”#dbeafe”,c:”#1e40af”},Paid:{bg:”#dcfce7”,c:”#15803d”},Overdue:{bg:”#fee2e2”,c:R}}[s]||{bg:GY,c:MT});
+const Chip=({label,bg,c,size=10})=><span style={{background:bg,color:c,fontSize:size,fontWeight:800,padding:“3px 9px”,borderRadius:20,display:“inline-block”,whiteSpace:“nowrap”}}>{label}</span>;
+const Btn=({label,onClick,bg=R,c=WH,size=14,pad=“12px 18px”,fw=800,style={}})=><button onClick={onClick} style={{background:bg,color:c,border:“none”,borderRadius:10,padding:pad,fontSize:size,fontWeight:fw,minHeight:44,…style}}>{label}</button>;
+const SecBtn=({label,onClick,style={}})=><button onClick={onClick} style={{background:WH,color:BK,border:`1px solid ${BD}`,borderRadius:10,padding:“11px 18px”,fontSize:14,fontWeight:700,minHeight:44,…style}}>{label}</button>;
+const inp={border:`1px solid ${BD}`,borderRadius:10,padding:“12px 14px”,fontSize:16,outline:“none”,color:BK,background:WH,width:“100%”};
+const Inp=({label,children})=><div style={{display:“flex”,flexDirection:“column”,gap:6,marginBottom:14}}><label style={{fontSize:13,fontWeight:700,color:BK}}>{label}</label>{children}</div>;
+
+// ── LOGO ──────────────────────────────────────────────────────────────────────
+const Logo=({s=40})=>(
+<svg width={s} height={s*1.05} viewBox="0 0 200 210" fill="none">
+<path d="M100 4 L188 40 L188 120 Q188 178 100 206 Q12 178 12 120 L12 40 Z" fill={BK} stroke={R} strokeWidth="6"/>
+<path d="M100 18 L176 50 L176 118 Q176 168 100 192 Q24 168 24 118 L24 50 Z" fill="none" stroke={R} strokeWidth="3" opacity="0.6"/>
+<path d="M42 100 Q55 72 80 68 Q90 66 100 67 Q118 66 132 72 L155 85 Q162 88 160 95 L158 100 Q148 103 100 104 Q52 103 42 100Z" fill={R}/>
+<path d="M50 98 Q60 80 80 76 Q100 73 120 76 Q138 80 148 90 L152 96 Q140 100 100 101 Q60 100 50 98Z" fill={BK} opacity="0.5"/>
+<circle cx="72" cy="103" r="10" fill={BK} stroke="#555" strokeWidth="2"/>
+<circle cx="72" cy="103" r="5" fill="#333"/>
+<circle cx="130" cy="103" r="10" fill={BK} stroke="#555" strokeWidth="2"/>
+<circle cx="130" cy="103" r="5" fill="#333"/>
+<path d="M55 72 L56.5 68 L58 72 L62 73.5 L58 75 L56.5 79 L55 75 L51 73.5Z" fill="white" opacity="0.9"/>
+<rect x="28" y="118" width="144" height="36" rx="4" fill={R}/>
+<text x="36" y="145" fontFamily="Arial Black,sans-serif" fontWeight="900" fontSize="26" fill="white">VAL</text>
+<text x="96" y="145" fontFamily="Arial Black,sans-serif" fontWeight="900" fontSize="26" fill="#e0e0e0">EX</text>
+<rect x="44" y="158" width="112" height="24" rx="3" fill={BK}/>
+<text x="100" y="175" fontFamily="Arial Black,sans-serif" fontWeight="900" fontSize="14" fill="white" textAnchor="middle" letterSpacing="2">DETAILS</text>
+<path d="M100 28 L101.5 24 L103 28 L107 29.5 L103 31 L101.5 35 L100 31 L96 29.5Z" fill="white" opacity="0.9"/>
+</svg>
+);
+
+// ── MODAL ─────────────────────────────────────────────────────────────────────
+const Modal=({title,onClose,children})=>(
+
+  <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:300}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="scroll" style={{background:WH,borderRadius:"20px 20px 0 0",width:"100%",maxWidth:540,maxHeight:"92vh",overflow:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.3)"}}>
+      <div style={{position:"sticky",top:0,background:WH,padding:"16px 20px 12px",borderBottom:`1px solid ${BD}`,display:"flex",justifyContent:"space-between",alignItems:"center",zIndex:1}}>
+        <b style={{fontSize:17,color:BK}}>{title}</b>
+        <button onClick={onClose} style={{background:GY,border:"none",borderRadius:"50%",width:32,height:32,fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:MT}}>✕</button>
+      </div>
+      <div style={{padding:"16px 20px 40px"}}>{children}</div>
+    </div>
+  </div>
+);
+
+// ── LOGIN ─────────────────────────────────────────────────────────────────────
+function Login({onLogin}){
+const[pin,setPin]=useState(””);
+const[err,setErr]=useState(””);
+const[shake,setShake]=useState(false);
+const[tries,setTries]=useState(0);
+const[locked,setLocked]=useState(false);
+const[secs,setSecs]=useState(0);
+useEffect(()=>{
+if(locked&&secs>0){const t=setTimeout(()=>setSecs(s=>s-1),1000);return()=>clearTimeout(t);}
+if(locked&&secs===0&&tries>=5){setLocked(false);setTries(0);}
+},[locked,secs,tries]);
+const tap=(k)=>{
+if(locked)return;
+if(k===“del”){setPin(p=>p.slice(0,-1));setErr(””);return;}
+if(pin.length>=4)return;
+const next=pin+k;setPin(next);
+if(next.length===4){
+setTimeout(()=>{
+if(next===PIN){sessionStorage.setItem(SES,“1”);onLogin();}
+else{
+const a=tries+1;setTries(a);
+if(a>=5){setLocked(true);setSecs(30);setErr(“Too many attempts. Wait 30s.”);}
+else setErr(`Wrong PIN. ${5-a} attempt${5-a!==1?"s":""} left.`);
+setShake(true);setTimeout(()=>{setShake(false);setPin(””);},600);
+}
+},100);
+}
+};
+return(
+<div style={{position:“fixed”,inset:0,background:“linear-gradient(160deg,#0f0e0c,#1a1210,#0f0e0c)”,display:“flex”,flexDirection:“column”,alignItems:“center”,justifyContent:“center”}}>
+<div style={{position:“absolute”,inset:0,opacity:0.04,backgroundImage:“repeating-linear-gradient(45deg,#c0392b 0,#c0392b 1px,transparent 0,transparent 50%)”,backgroundSize:“20px 20px”}}/>
+<div style={{position:“relative”,zIndex:1,display:“flex”,flexDirection:“column”,alignItems:“center”,marginBottom:40}}>
+<Logo s={80}/>
+<div style={{color:WH,fontWeight:900,fontSize:28,letterSpacing:2,marginTop:14}}>VAL<span style={{color:R}}>EX</span></div>
+<div style={{color:WH,fontWeight:900,fontSize:11,letterSpacing:6,marginTop:2}}>DETAILS</div>
+<div style={{color:”#888”,fontSize:12,marginTop:6}}>CRM — Owner Access</div>
+</div>
+<div style={{position:“relative”,zIndex:1,marginBottom:10,textAlign:“center”}}>
+<div style={{fontSize:13,color:locked?R:”#888”,marginBottom:18,letterSpacing:1,textTransform:“uppercase”}}>{locked?`🔒 Locked — wait ${secs}s`:“Enter your PIN”}</div>
+<div style={{display:“flex”,gap:16,justifyContent:“center”,marginBottom:8,animation:shake?“shake 0.5s ease”:“none”}}>
+{[0,1,2,3].map(i=><div key={i} style={{width:16,height:16,borderRadius:“50%”,background:i<pin.length?R:“transparent”,border:`2px solid ${i<pin.length?R:"#555"}`,transition:“all 0.15s”}}/>)}
+</div>
+{err&&<div style={{color:R,fontSize:12,marginTop:8,fontWeight:700}}>{err}</div>}
+</div>
+<div style={{position:“relative”,zIndex:1,display:“grid”,gridTemplateColumns:“repeat(3,1fr)”,gap:12,maxWidth:280,width:“100%”,padding:“0 20px”,marginTop:10}}>
+{[“1”,“2”,“3”,“4”,“5”,“6”,“7”,“8”,“9”,””,“0”,“del”].map((k,i)=>
+k===””?<div key={i}/>:
+<button key={i} onClick={()=>tap(k)} disabled={locked}
+style={{height:68,borderRadius:16,background:k===“del”?“rgba(255,255,255,0.06)”:“rgba(255,255,255,0.08)”,border:“1px solid rgba(255,255,255,0.1)”,color:k===“del”?”#aaa”:WH,fontSize:k===“del”?20:26,fontWeight:700,display:“flex”,alignItems:“center”,justifyContent:“center”,opacity:locked?0.4:1}}
+onTouchStart={e=>{if(!locked)e.currentTarget.style.background=“rgba(192,57,43,0.3)”;}}
+onTouchEnd={e=>{e.currentTarget.style.background=k===“del”?“rgba(255,255,255,0.06)”:“rgba(255,255,255,0.08)”;}}
+>{k===“del”?“⌫”:k}</button>
+)}
+</div>
+<div style={{position:“relative”,zIndex:1,marginTop:32,color:”#444”,fontSize:11,textAlign:“center”,lineHeight:1.8}}>
+Valex Details · Fontana, CA<br/>Private Business Data
+</div>
+</div>
+);
+}
+
+// ── SMS QUICK ACTIONS SHEET ───────────────────────────────────────────────────
+function SmsSheet({client,appt,inv,onClose}){
+const name=client?.name||appt?.client||inv?.client||“Client”;
+const phone=client?.phone||appt?.phone||inv?.phone||””;
+if(!phone)return(
+<Modal title="No Phone Number" onClose={onClose}>
+<div style={{fontSize:14,color:MT,textAlign:“center”,padding:“20px 0”}}>This client has no phone number saved. Edit the client to add one.</div>
+<Btn label=“OK” onClick={onClose} style={{width:“100%”}}/>
+</Modal>
+);
+const actions=[];
+if(appt&&appt.ds===“AwaitingDeposit”) actions.push({icon:“💰”,label:“Send $25 Deposit Request”,msg:T.deposit(name,appt.service,appt.date,appt.time),color:”#15803d”,bg:”#dcfce7”});
+if(appt&&appt.ds===“OwnerConfirmed”){
+actions.push({icon:“✅”,label:“Send Confirmation”,msg:T.confirm(name,appt.service,appt.date,appt.time),color:”#065f46”,bg:”#d1fae5”});
+actions.push({icon:“⏰”,label:“Send 1-Hour Reminder”,msg:T.remind60(name),color:”#92400e”,bg:”#fef3c7”});
+actions.push({icon:“⏱”,label:“Send 30-Min Reminder”,msg:T.remind30(name),color:”#1e40af”,bg:”#dbeafe”});
+actions.push({icon:“📅”,label:“Send Reschedule Notice”,msg:T.reschedule(name,appt.service,appt.date,appt.time),color:”#5b21b6”,bg:”#ede9fe”});
+actions.push({icon:“🚫”,label:“Send Cancellation”,msg:T.cancel(name),color:R,bg:”#fee2e2”});
+}
+if(inv) actions.push({icon:“📄”,label:“Send Invoice via Text”,msg:T.invoice(name,inv.id,tot(inv).toLocaleString(),inv.due),color:”#1e40af”,bg:”#dbeafe”});
+if(client&&!appt&&!inv){
+actions.push({icon:“💰”,label:“Request $25 Deposit”,msg:T.deposit(name,“your detail”,“your appointment date”,“your appointment time”),color:”#15803d”,bg:”#dcfce7”});
+actions.push({icon:“💬”,label:“Send Custom Message”,msg:T.custom(name),color:BK,bg:GY});
+}
+if(!actions.length){
+actions.push({icon:“💬”,label:“Send Message”,msg:`Hey ${name.split(" ")[0]}! This is Valeria from Valex Details. `,color:BK,bg:GY});
+}
+return(
+<Modal title={`📱 Text ${name}`} onClose={onClose}>
+<div style={{fontSize:12,color:MT,marginBottom:16,background:”#f0f9ff”,padding:“10px 14px”,borderRadius:10,border:“1px solid #bae6fd”}}>
+📱 Tapping any button below opens your iPhone Messages app with the text already written. Just hit Send!
+</div>
+<div style={{fontSize:12,color:MT,marginBottom:14}}>Sending to: <b style={{color:BK}}>{phone}</b></div>
+{actions.map((a,i)=>(
+<button key={i} onClick={()=>{sms(phone,a.msg);onClose();}} style={{display:“flex”,alignItems:“center”,gap:14,width:“100%”,padding:“16px”,borderRadius:14,border:`2px solid ${a.color}`,background:a.bg,marginBottom:10,textAlign:“left”,minHeight:60}}>
+<span style={{fontSize:26,flexShrink:0}}>{a.icon}</span>
+<div style={{flex:1}}>
+<div style={{fontWeight:800,fontSize:14,color:a.color}}>{a.label}</div>
+<div style={{fontSize:11,color:MT,marginTop:2,overflow:“hidden”,textOverflow:“ellipsis”,whiteSpace:“nowrap”,maxWidth:220}}>{a.msg.split(”\n”)[0]}</div>
+</div>
+<span style={{fontSize:20,color:a.color,flexShrink:0}}>→</span>
+</button>
+))}
+</Modal>
+);
+}
+
+// ── DEPOSIT VIEW (client sees) ────────────────────────────────────────────────
+function DepositView({appt,onConfirm}){
+const[step,setStep]=useState(“choose”);
+const[chosen,setChosen]=useState(null);
+if(step===“done”)return(
+<div style={{textAlign:“center”,padding:“40px 20px”}}>
+<div style={{fontSize:64,marginBottom:16}}>✅</div>
+<div style={{fontSize:22,fontWeight:900,marginBottom:8}}>Deposit Submitted!</div>
+<div style={{fontSize:14,color:MT,lineHeight:1.6,marginBottom:20}}>
+{chosen?.id===“cashapp”?“Valeria will send you a Cash App request shortly.”:`Your $25 via ${chosen?.label} has been submitted. Valex Details will confirm once verified.`}
+</div>
+<div style={{background:GY,borderRadius:12,padding:“12px 20px”,fontSize:13,display:“inline-block”}}><strong>{appt.service}</strong><br/>{appt.date} at {appt.time}</div>
+</div>
+);
+return(
+<div>
+<div style={{background:BK,margin:”-16px -20px 0”,padding:“20px”,display:“flex”,alignItems:“center”,gap:12,borderBottom:`4px solid ${R}`}}>
+<Logo s={44}/><div><div style={{color:WH,fontWeight:900,fontSize:18}}>VAL<span style={{color:R}}>EX</span> DETAILS</div><div style={{color:”#aaa”,fontSize:11,marginTop:2}}>Professional Auto Detailing · Fontana, CA</div></div>
+</div>
+<div style={{background:GY,margin:“0 -20px”,padding:“16px 20px”,borderBottom:`1px solid ${BD}`}}>
+{[[“Service”,appt.service],[“Vehicle”,appt.vehicle||”—”],[“Date”,appt.date],[“Time”,appt.time],[“Duration”,`${appt.dur} min`]].map(([l,v])=>(
+<div key={l} style={{display:“flex”,justifyContent:“space-between”,padding:“6px 0”,borderBottom:`1px solid ${BD}`}}>
+<span style={{fontSize:13,color:MT}}>{l}</span><span style={{fontSize:14,fontWeight:700}}>{v}</span>
+</div>
+))}
+</div>
+<div style={{background:`linear-gradient(135deg,${R},#a93226)`,margin:“0 -20px”,padding:“16px 20px”,marginBottom:20}}>
+<div style={{display:“flex”,alignItems:“center”,gap:12}}>
+<span style={{fontSize:30}}>🔒</span>
+<div><div style={{color:WH,fontWeight:900,fontSize:16}}>$25 Deposit Required</div><div style={{color:“rgba(255,255,255,0.85)”,fontSize:12,marginTop:3,lineHeight:1.5}}>Your spot is NOT confirmed until your $25 deposit is received. This applies toward your total balance.</div></div>
+</div>
+</div>
+{step===“choose”&&(
+<>
+<div style={{fontWeight:800,fontSize:15,marginBottom:14}}>Choose your payment method:</div>
+<button onClick={()=>{setChosen({id:“zelle”,label:“Zelle”});setStep(“pay”);}} style={{display:“flex”,alignItems:“center”,gap:14,width:“100%”,padding:“16px”,borderRadius:14,border:“2px solid #5b21b6”,background:”#ede9fe”,marginBottom:12,textAlign:“left”,minHeight:64}}>
+<span style={{fontSize:32}}>💚</span><div><div style={{fontWeight:800,fontSize:16,color:”#5b21b6”}}>Zelle</div><div style={{fontSize:12,color:MT}}>909-329-4531</div></div>
+<span style={{marginLeft:“auto”,fontSize:22,color:”#5b21b6”}}>→</span>
+</button>
+<button onClick={()=>{setChosen({id:“cashapp”,label:“Cash App”});setStep(“cashapp”);}} style={{display:“flex”,alignItems:“center”,gap:14,width:“100%”,padding:“16px”,borderRadius:14,border:“2px solid #15803d”,background:”#dcfce7”,marginBottom:12,textAlign:“left”,minHeight:64}}>
+<span style={{fontSize:32}}>💵</span>
+<div><div style={{fontWeight:800,fontSize:16,color:”#15803d”}}>Cash App</div><div style={{fontSize:12,color:MT}}>I would like to use Cash App</div></div>
+<span style={{marginLeft:“auto”,fontSize:22,color:”#15803d”}}>→</span>
+</button>
+<button onClick={()=>{setChosen({id:“applepay”,label:“Apple Pay”});setStep(“pay”);}} style={{display:“flex”,alignItems:“center”,gap:14,width:“100%”,padding:“16px”,borderRadius:14,border:“2px solid #111”,background:”#f3f4f6”,marginBottom:12,textAlign:“left”,minHeight:64}}>
+<span style={{fontSize:32}}>🍎</span><div><div style={{fontWeight:800,fontSize:16,color:BK}}>Apple Pay</div><div style={{fontSize:12,color:MT}}>909-329-4531</div></div>
+<span style={{marginLeft:“auto”,fontSize:22,color:BK}}>→</span>
+</button>
+<div style={{fontSize:12,color:MT,textAlign:“center”,fontStyle:“italic”,marginTop:8}}>⚠️ Not confirmed until Valex Details verifies payment.</div>
+</>
+)}
+{step===“cashapp”&&(
+<div>
+<button onClick={()=>{setStep(“choose”);setChosen(null);}} style={{background:“none”,border:“none”,color:R,fontWeight:700,fontSize:14,padding:0,marginBottom:16}}>← Back</button>
+<div style={{background:”#dcfce7”,borderRadius:14,padding:18,marginBottom:16,border:“2px solid #15803d”}}>
+<div style={{fontSize:20,fontWeight:900,marginBottom:6}}>💵 Cash App Request</div>
+<div style={{fontSize:14,color:”#555”,lineHeight:1.6}}>By tapping confirm below, Valeria will be notified that you want to pay via Cash App. She will send you a Cash App request to complete your $25 deposit.</div>
+</div>
+{[“Valeria receives your request instantly”,“She sends you a Cash App request”,“You accept it to lock in your spot”].map((s,i)=>(
+<div key={i} style={{display:“flex”,alignItems:“flex-start”,gap:12,marginBottom:12,fontSize:14}}>
+<span style={{width:28,height:28,borderRadius:“50%”,background:R,color:WH,display:“flex”,alignItems:“center”,justifyContent:“center”,fontWeight:900,fontSize:13,flexShrink:0}}>{i+1}</span>
+<span style={{paddingTop:4,lineHeight:1.5}}>{s}</span>
+</div>
+))}
+<button onClick={()=>{setStep(“done”);onConfirm(appt.id,“cashapp”);}} style={{width:“100%”,background:“linear-gradient(135deg,#15803d,#166534)”,color:WH,border:“none”,borderRadius:14,padding:“18px”,fontWeight:900,fontSize:16,minHeight:56}}>
+💵 Request Cash App Payment
+</button>
+</div>
+)}
+{step===“pay”&&chosen&&chosen.id!==“cashapp”&&(
+<div>
+<button onClick={()=>{setStep(“choose”);setChosen(null);}} style={{background:“none”,border:“none”,color:R,fontWeight:700,fontSize:14,padding:0,marginBottom:14}}>← Back</button>
+<div style={{background:GY,borderRadius:14,padding:18,marginBottom:16,border:`1px solid ${BD}`}}>
+<div style={{fontSize:26,fontWeight:900,marginBottom:6}}>Send <span style={{color:R}}>$25.00</span></div>
+<div style={{fontSize:17,fontWeight:700,marginBottom:8}}>{chosen.id===“zelle”?“💚”:“🍎”} 909-329-4531</div>
+<div style={{fontSize:13,color:MT,lineHeight:1.6}}>Open {chosen.label} → send $25 to 909-329-4531. Include your name + date in the memo.</div>
+</div>
+{[“Open “+chosen.label+” and send $25 to 909-329-4531”,“Add your name + appointment date in the note”,“Tap confirm below once payment is sent”].map((s,i)=>(
+<div key={i} style={{display:“flex”,alignItems:“flex-start”,gap:12,marginBottom:12,fontSize:14}}>
+<span style={{width:28,height:28,borderRadius:“50%”,background:R,color:WH,display:“flex”,alignItems:“center”,justifyContent:“center”,fontWeight:900,fontSize:13,flexShrink:0}}>{i+1}</span>
+<span style={{paddingTop:4,lineHeight:1.5}}>{s}</span>
+</div>
+))}
+<button onClick={()=>{setStep(“done”);onConfirm(appt.id,chosen.id);}} style={{width:“100%”,background:`linear-gradient(135deg,${R},#a93226)`,color:WH,border:“none”,borderRadius:14,padding:“18px”,fontWeight:900,fontSize:16,marginTop:16,minHeight:56}}>
+✅ I’ve Sent My $25 — Confirm My Appointment
+</button>
+<div style={{marginTop:10,fontSize:11,color:MT,textAlign:“center”}}>Valex Details will send a confirmation text once verified.</div>
+</div>
+)}
+</div>
+);
+}
+
+// ── MAIN APP ──────────────────────────────────────────────────────────────────
+function App(){
+const now=new Date();
+const wxIdx=Math.min(Math.max(now.getHours()-7,0),WX.length-1);
+const wx=WX[wxIdx];
+const[clients,setClientsRaw]=useState(()=>DB.get(“clients”)||[]);
+const[appts,setApptsRaw]=useState(()=>DB.get(“appts”)||[]);
+const[invs,setInvsRaw]=useState(()=>DB.get(“invs”)||[]);
+const[notifs,setNotifsRaw]=useState(()=>DB.get(“notifs”)||[]);
+const[tab,setTab]=useState(“home”);
+const[toast,setToast]=useState(null);
+const[smsSheet,setSmsSheet]=useState(null);
+const[showNotifs,setShowNotifs]=useState(false);
+
+const save=(key,val,setter)=>{setter(val);DB.set(key,val);};
+const setClients=v=>save(“clients”,v,setClientsRaw);
+const setAppts=v=>save(“appts”,v,setApptsRaw);
+const setInvs=v=>save(“invs”,v,setInvsRaw);
+const setNotifs=v=>save(“notifs”,v,setNotifsRaw);
+
+const toast_=(m,type=“ok”)=>{setToast({m,type});setTimeout(()=>setToast(null),3000);};
+const push=(type,text)=>setNotifs([{id:“n”+Date.now(),type,text,time:“just now”,r:false},…notifs]);
+const unread=notifs.filter(n=>!n.r).length;
+const depPend=appts.filter(a=>a.ds===“AwaitingDeposit”).length;
+const awConf=appts.filter(a=>a.ds===“DepositPaid”).length;
+const monthRev=invs.filter(i=>{if(i.status!==“Paid”||!i.date)return false;const d=new Date(i.date);return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();}).reduce((s,i)=>s+tot(i),0);
+const pendRev=invs.filter(i=>i.status===“Sent”).reduce((s,i)=>s+tot(i),0);
+
+const ownerConfirm=(id)=>{
+const a=appts.find(x=>x.id===id);
+setAppts(appts.map(x=>x.id===id?{…x,ds:“OwnerConfirmed”}:x));
+push(“appt”,`✅ CONFIRMED: ${a?.client} — ${a?.date} at ${a?.time}`);
+toast_(`🎉 Confirmed! Text ${a?.client} to let them know.`);
+if(a?.phone) setSmsSheet({type:“appt_confirm”,appt:{…a,ds:“OwnerConfirmed”},client:{name:a.client,phone:a.phone}});
+};
+
+const confirmDeposit=(apptId,methodId)=>{
+const a=appts.find(x=>x.id===apptId);
+const dm={zelle:“Zelle”,cashapp:“Cash App”,applepay:“Apple Pay”}[methodId];
+setAppts(appts.map(x=>x.id===apptId?{…x,ds:“DepositPaid”,dm}:x));
+if(methodId===“cashapp”){push(“dep”,`💵 ${a?.client} wants Cash App — send them a request!`);toast_(`💵 Send ${a?.client} a Cash App request!`);}
+else{push(“dep”,`💰 ${a?.client} sent $25 via ${dm} — tap ✅ Confirm`);toast_(`✅ ${a?.client} paid $25 via ${dm}. Tap Confirm.`);}
+};
+
+const navTabs=[
+{id:“home”,icon:“⬡”,label:“Home”},
+{id:“appts”,icon:“📅”,label:“Appts”},
+{id:“clients”,icon:“👥”,label:“Clients”},
+{id:“invs”,icon:“📄”,label:“Invoices”},
+{id:“earn”,icon:“💲”,label:“Earnings”},
+{id:“more”,icon:“⋯”,label:“More”},
+];
+
+return(
+<div style={{display:“flex”,flexDirection:“column”,height:“100%”,background:”#f0f0f0”}}>
+<div style={{background:BK,borderBottom:`3px solid ${R}`,flexShrink:0,paddingTop:“env(safe-area-inset-top)”}}>
+<div style={{display:“flex”,alignItems:“center”,justifyContent:“space-between”,padding:“10px 16px”}}>
+<div style={{display:“flex”,alignItems:“center”,gap:10}}>
+<Logo s={34}/>
+<div><div style={{color:WH,fontWeight:900,fontSize:15,letterSpacing:1}}>VAL<span style={{color:R}}>EX</span></div><div style={{color:R,fontWeight:800,fontSize:9,letterSpacing:3}}>DETAILS CRM</div></div>
+</div>
+<div style={{display:“flex”,alignItems:“center”,gap:10}}>
+<div style={{background:“rgba(255,255,255,0.1)”,borderRadius:20,padding:“5px 10px”,display:“flex”,alignItems:“center”,gap:5}}>
+<span style={{fontSize:14}}>{wx.i}</span><span style={{color:WH,fontSize:13,fontWeight:700}}>{wx.t}°</span>
+</div>
+<button onClick={()=>setShowNotifs(!showNotifs)} style={{position:“relative”,background:“none”,border:“none”,padding:4}}>
+<span style={{fontSize:22}}>🔔</span>
+{unread>0&&<span style={{position:“absolute”,top:0,right:0,background:R,color:WH,borderRadius:“50%”,width:18,height:18,fontSize:10,fontWeight:900,display:“flex”,alignItems:“center”,justifyContent:“center”}}>{unread}</span>}
+</button>
+</div>
+</div>
+{awConf>0&&<div onClick={()=>setTab(“appts”)} style={{background:R,padding:“8px 16px”,display:“flex”,alignItems:“center”,gap:8,cursor:“pointer”}}>
+<span style={{fontSize:16}}>💰</span><span style={{color:WH,fontSize:13,fontWeight:800}}>{awConf} deposit{awConf>1?“s”:””} received — tap to confirm</span><span style={{marginLeft:“auto”,color:WH}}>→</span>
+</div>}
+</div>
+{showNotifs&&(
+<div style={{position:“fixed”,top:awConf>0?94:60,right:0,left:0,zIndex:200,background:WH,borderBottom:`1px solid ${BD}`,maxHeight:300,overflow:“auto”,boxShadow:“0 4px 20px rgba(0,0,0,0.15)”}}>
+<div style={{display:“flex”,justifyContent:“space-between”,padding:“12px 16px”,borderBottom:`1px solid ${BD}`}}>
+<b style={{fontSize:14}}>Notifications</b>
+<button onClick={()=>{setNotifs(notifs.map(x=>({…x,r:true})));setShowNotifs(false);}} style={{background:“none”,border:“none”,color:R,fontSize:13,fontWeight:700}}>Mark all read</button>
+</div>
+{notifs.length===0&&<div style={{padding:20,textAlign:“center”,color:MT,fontSize:13}}>No notifications yet</div>}
+{notifs.map(n=>(
+<div key={n.id} style={{display:“flex”,gap:12,padding:“11px 16px”,borderBottom:“1px solid #f5f5f5”,background:!n.r?”#fff8f8”:WH}}>
+<span style={{fontSize:18}}>{n.type===“dep”?“💰”:n.type===“appt”?“📅”:“✉”}</span>
+<div><div style={{fontSize:13,fontWeight:n.r?400:700}}>{n.text}</div><div style={{fontSize:11,color:MT,marginTop:2}}>{n.time}</div></div>
+</div>
+))}
+</div>
+)}
+<div className=“scroll” style={{flex:1,overflow:“auto”}} onClick={()=>showNotifs&&setShowNotifs(false)}>
+{tab===“home”&&<HomeTab appts={appts} invs={invs} clients={clients} monthRev={monthRev} pendRev={pendRev} depPend={depPend} awConf={awConf} wx={wx} wxIdx={wxIdx} setTab={setTab}/>}
+{tab===“appts”&&<ApptsTab appts={appts} setAppts={setAppts} clients={clients} toast_={toast_} push={push} onOwnerConfirm={ownerConfirm} confirmDeposit={confirmDeposit} onSms={setSmsSheet}/>}
+{tab===“clients”&&<ClientsTab clients={clients} setClients={setClients} toast_={toast_} onSms={setSmsSheet}/>}
+{tab===“invs”&&<InvsTab invs={invs} setInvs={setInvs} clients={clients} toast_={toast_} push={push} onSms={setSmsSheet}/>}
+{tab===“earn”&&<EarnTab invs={invs}/>}
+{tab===“more”&&<MoreTab wx={wx} wxIdx={wxIdx} toast_={toast_} clients={clients} onSms={setSmsSheet}/>}
+</div>
+<div style={{background:BK,borderTop:`2px solid ${R}`,flexShrink:0,paddingBottom:“env(safe-area-inset-bottom)”}}>
+<div style={{display:“flex”}}>
+{navTabs.map(t=>(
+<button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:“flex”,flexDirection:“column”,alignItems:“center”,padding:“8px 2px 6px”,background:“none”,border:“none”,color:tab===t.id?R:”#777”,position:“relative”,minHeight:56}}>
+<span style={{fontSize:18}}>{t.icon}</span>
+<span style={{fontSize:9,fontWeight:tab===t.id?800:600,marginTop:2}}>{t.label}</span>
+{t.id===“appts”&&(depPend+awConf)>0&&<span style={{position:“absolute”,top:6,right:“calc(50% - 14px)”,background:”#f59e0b”,color:WH,borderRadius:“50%”,width:14,height:14,fontSize:8,fontWeight:900,display:“flex”,alignItems:“center”,justifyContent:“center”}}>{depPend+awConf}</span>}
+</button>
+))}
+</div>
+</div>
+{smsSheet&&<SmsSheet {…smsSheet} onClose={()=>setSmsSheet(null)}/>}
+{toast&&<div style={{position:“fixed”,bottom:76,left:“50%”,transform:“translateX(-50%)”,background:toast.type===“err”?R:BK,color:WH,padding:“12px 22px”,borderRadius:24,fontWeight:700,fontSize:14,zIndex:400,boxShadow:“0 4px 20px rgba(0,0,0,0.3)”,maxWidth:“90vw”,textAlign:“center”}}>{toast.m}</div>}
+</div>
+);
+}
+
+// ── HOME ──────────────────────────────────────────────────────────────────────
+function HomeTab({appts,invs,clients,monthRev,pendRev,depPend,awConf,wx,wxIdx,setTab}){
+return(
+<div style={{padding:16,display:“flex”,flexDirection:“column”,gap:14}}>
+<div style={{display:“grid”,gridTemplateColumns:“1fr 1fr”,gap:10}}>
+{[{l:“This Month”,v:`$${monthRev.toLocaleString()}`,c:R,i:“💰”},{l:“Pending”,v:`$${pendRev.toLocaleString()}`,c:BK,i:“⏳”},{l:“Active Clients”,v:clients.filter(c=>c.status===“Active”).length,c:BK,i:“👥”},{l:“Need Action”,v:depPend+awConf,c:awConf>0?R:BK,i:“🔒”}].map(s=>(
+<div key={s.l} style={{background:WH,borderRadius:14,padding:14,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”,borderTop:`4px solid ${s.c}`}}>
+<div style={{fontSize:20,marginBottom:4}}>{s.i}</div>
+<div style={{fontSize:22,fontWeight:900,color:s.c}}>{s.v}</div>
+<div style={{fontSize:11,fontWeight:700,color:BK,marginTop:1}}>{s.l}</div>
+</div>
+))}
+</div>
+<div style={{background:WH,borderRadius:14,padding:14,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”}}>
+<div style={{fontSize:11,fontWeight:800,color:MT,textTransform:“uppercase”,letterSpacing:1,marginBottom:10}}>☁ Fontana, CA Weather</div>
+<div style={{display:“flex”,alignItems:“center”,gap:14,marginBottom:12}}><span style={{fontSize:44}}>{wx.i}</span><div><div style={{fontSize:28,fontWeight:900}}>{wx.t}°F</div><div style={{fontSize:13,color:”#555”}}>{wx.d}</div></div></div>
+<div style={{display:“flex”,gap:8,overflowX:“auto”,paddingBottom:4}}>
+{WX.map((h,i)=>(
+<div key={i} style={{display:“flex”,flexDirection:“column”,alignItems:“center”,gap:2,padding:“8px”,borderRadius:10,background:i===wxIdx?”#fff0f0”:GY,border:i===wxIdx?`2px solid ${R}`:“2px solid transparent”,flexShrink:0,minWidth:56}}>
+<div style={{fontSize:8,color:MT,fontWeight:800}}>{i===wxIdx?“NOW”:h.h}</div>
+<div style={{fontSize:16}}>{h.i}</div>
+<div style={{fontSize:12,fontWeight:800}}>{h.t}°</div>
+</div>
+))}
+</div>
+</div>
+{appts.length===0&&invs.length===0&&clients.length===0?(
+<div style={{background:WH,borderRadius:14,padding:32,textAlign:“center”,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”}}>
+<div style={{fontSize:48,marginBottom:12}}>🚗</div>
+<div style={{fontSize:18,fontWeight:900,color:BK,marginBottom:8}}>Welcome to Valex Details CRM!</div>
+<div style={{fontSize:14,color:MT,lineHeight:1.6,marginBottom:20}}>Your CRM is ready. Start by adding your first client or booking an appointment.</div>
+<div style={{display:“flex”,gap:10,justifyContent:“center”,flexWrap:“wrap”}}>
+<Btn label=”+ Add Client” onClick={()=>setTab(“clients”)} pad=“12px 20px”/>
+<Btn label=”+ Book Appt” onClick={()=>setTab(“appts”)} bg={BK} pad=“12px 20px”/>
+</div>
+</div>
+):(
+<>
+{appts.length>0&&<div style={{background:WH,borderRadius:14,padding:14,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”}}>
+<div style={{display:“flex”,justifyContent:“space-between”,alignItems:“center”,marginBottom:12}}><b style={{fontSize:15}}>Upcoming Appointments</b><button onClick={()=>setTab(“appts”)} style={{background:“none”,border:“none”,color:R,fontSize:13,fontWeight:800}}>View all →</button></div>
+{appts.slice(0,3).map(a=>{const dc=dcolor(a.ds);return(
+<div key={a.id} style={{display:“flex”,alignItems:“center”,gap:10,padding:“10px 0”,borderBottom:`1px solid ${BD}`}}>
+<div style={{width:10,height:10,borderRadius:“50%”,background:a.ds===“OwnerConfirmed”?BK:a.ds===“DepositPaid”?”#f59e0b”:R,flexShrink:0}}/>
+<div style={{flex:1}}><div style={{fontSize:14,fontWeight:700}}>{a.client}</div><div style={{fontSize:11,color:MT}}>{a.service} · {a.date}</div></div>
+<Chip label={dlabel(a.ds)} bg={dc.bg} c={dc.c} size={9}/>
+</div>
+);})}
+</div>}
+{invs.length>0&&<div style={{background:WH,borderRadius:14,padding:14,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”}}>
+<div style={{display:“flex”,justifyContent:“space-between”,alignItems:“center”,marginBottom:12}}><b style={{fontSize:15}}>Recent Invoices</b><button onClick={()=>setTab(“invs”)} style={{background:“none”,border:“none”,color:R,fontSize:13,fontWeight:800}}>View all →</button></div>
+{invs.slice(0,3).map(inv=>{const ic=icolor(inv.status);return(
+<div key={inv.id} style={{display:“flex”,justifyContent:“space-between”,alignItems:“center”,padding:“10px 0”,borderBottom:`1px solid ${BD}`}}>
+<div><div style={{fontSize:14,fontWeight:700}}>{inv.client}</div><div style={{fontSize:11,color:MT}}>{inv.id}</div></div>
+<div style={{textAlign:“right”}}><div style={{fontSize:16,fontWeight:900,color:R}}>${tot(inv).toLocaleString()}</div><Chip label={inv.status} bg={ic.bg} c={ic.c} size={9}/></div>
+</div>
+);})}
+</div>}
+</>
+)}
+</div>
+);
+}
+
+// ── APPOINTMENTS ──────────────────────────────────────────────────────────────
+function ApptsTab({appts,setAppts,clients,toast_,push,onOwnerConfirm,confirmDeposit,onSms}){
+const[showNew,setShowNew]=useState(false);
+const[rescId,setRescId]=useState(null);
+const[markId,setMarkId]=useState(null);
+const[depView,setDepView]=useState(null);
+const[form,setForm]=useState({client:””,phone:””,vehicle:””,service:””,date:””,time:””,dur:60});
+const conflict=(d,t,ex=null)=>appts.some(a=>a.date===d&&a.time===t&&a.id!==ex);
+
+const book=()=>{
+if(!form.client||!form.service||!form.date||!form.time){toast_(“Fill all required fields”,“err”);return;}
+if(conflict(form.date,form.time)){toast_(“⚠️ Time conflict!”,“err”);return;}
+const cl=clients.find(c=>c.name===form.client);
+const a={id:“a”+Date.now(),client:form.client,phone:cl?.phone||form.phone,vehicle:form.vehicle||cl?.vehicle||””,service:form.service,date:form.date,time:form.time,dur:form.dur,ds:“AwaitingDeposit”,dm:null};
+setAppts([…appts,a]);
+push(“dep”,`🔒 Deposit request needed for ${form.client}`);
+toast_(`✓ Booked! Send ${form.client} the deposit request.`);
+// Open SMS sheet to send deposit request right away
+const phone=cl?.phone||form.phone;
+if(phone) onSms({type:“appt”,appt:a,client:{name:form.client,phone}});
+setForm({client:””,phone:””,vehicle:””,service:””,date:””,time:””,dur:60});
+setShowNew(false);
+};
+
+const manualDeposit=(id,method)=>{
+const a=appts.find(x=>x.id===id);
+setAppts(appts.map(x=>x.id===id?{…x,ds:“DepositPaid”,dm:method}:x));
+push(“dep”,`💰 Deposit marked: ${a?.client} via ${method}`);
+toast_(“Deposit marked. Now confirm the appointment.”);setMarkId(null);
+};
+
+const cancel=(id)=>{
+const a=appts.find(x=>x.id===id);
+setAppts(appts.map(x=>x.id===id?{…x,ds:“Cancelled”}:x));
+if(a?.phone) onSms({type:“cancel”,appt:a,client:{name:a.client,phone:a.phone}});
+toast_(`Cancelled.`);
+};
+
+const grouped=appts.reduce((acc,a)=>{if(a.ds===“Cancelled”)return acc;if(!acc[a.date])acc[a.date]=[];acc[a.date].push(a);return acc;},{});
+const cancelled=appts.filter(a=>a.ds===“Cancelled”);
+
+return(
+<div style={{padding:16}}>
+<div style={{display:“flex”,justifyContent:“space-between”,alignItems:“center”,marginBottom:16}}>
+<div><div style={{fontSize:11,fontWeight:800,color:MT}}>🔒 $25 DEPOSIT REQUIRED</div><div style={{fontSize:10,color:MT}}>Tap 📱 to text client from your personal number</div></div>
+<Btn label=”+ Book” onClick={()=>setShowNew(true)} pad=“12px 16px” size={14}/>
+</div>
+
+```
+  {showNew&&(
+    <Modal title="Book Appointment" onClose={()=>setShowNew(false)}>
+      <div style={{background:"#fff0f0",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:13,color:R,fontWeight:700}}>
+        📱 After booking, you'll be prompted to send the client a deposit request text from your personal number.
+      </div>
+      <Inp label="Client *"><select style={inp} value={form.client} onChange={e=>{const cl=clients.find(c=>c.name===e.target.value);setForm({...form,client:e.target.value,phone:cl?.phone||"",vehicle:cl?.vehicle||""});}}><option value="">Select...</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}<option value="New Client">+ New Client</option></select></Inp>
+      <Inp label="Service *"><select style={inp} value={form.service} onChange={e=>setForm({...form,service:e.target.value})}><option value="">Select...</option>{SERVICES.map(s=><option key={s}>{s}</option>)}</select></Inp>
+      <Inp label="Date *"><input type="date" style={inp} value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></Inp>
+      <Inp label={`Time * ${conflict(form.date,form.time)?"⚠️ Conflict!":""}`}><select style={{...inp,borderColor:conflict(form.date,form.time)?R:BD}} value={form.time} onChange={e=>setForm({...form,time:e.target.value})}><option value="">Select...</option>{TIMES.map(t=>{const c2=form.date&&conflict(form.date,t);return<option key={t} value={t} disabled={c2}>{t}{c2?" — Booked":""}</option>;})}</select></Inp>
+      <Inp label="Vehicle"><input style={inp} value={form.vehicle} onChange={e=>setForm({...form,vehicle:e.target.value})} placeholder="Year Make Model"/></Inp>
+      <Inp label="Client Phone (for texting)"><input type="tel" style={inp} value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="909-555-0000"/></Inp>
+      <Inp label="Duration"><select style={inp} value={form.dur} onChange={e=>setForm({...form,dur:Number(e.target.value)})}>{[30,45,60,90,120,180,240].map(d=><option key={d} value={d}>{d} min</option>)}</select></Inp>
+      <Btn label="📱 Book & Text Deposit Request" onClick={book} style={{width:"100%",marginTop:4}}/>
+    </Modal>
+  )}
+
+  {rescId&&(
+    <Modal title="Reschedule" onClose={()=>setRescId(null)}>
+      <Inp label="New Date"><input type="date" style={inp} onChange={e=>setRescId(p=>({...p,nd:e.target.value}))}/></Inp>
+      <Inp label="New Time"><select style={inp} onChange={e=>setRescId(p=>({...p,nt:e.target.value}))}><option value="">Select...</option>{TIMES.map(t=><option key={t}>{t}</option>)}</select></Inp>
+      <Btn label="Reschedule" onClick={()=>{
+        if(!rescId.nd||!rescId.nt){toast_("Pick new date & time","err");return;}
+        if(conflict(rescId.nd,rescId.nt,rescId.id)){toast_("⚠️ Time conflict!","err");return;}
+        const a=appts.find(x=>x.id===rescId.id);
+        setAppts(appts.map(x=>x.id===rescId.id?{...x,date:rescId.nd,time:rescId.nt}:x));
+        push("appt",`📅 Rescheduled: ${a?.client} → ${rescId.nd} at ${rescId.nt}`);
+        if(a?.phone) onSms({type:"reschedule",appt:{...a,date:rescId.nd,time:rescId.nt},client:{name:a.client,phone:a.phone}});
+        toast_("✓ Rescheduled!");setRescId(null);
+      }} style={{width:"100%",marginTop:4}}/>
+    </Modal>
+  )}
+
+  {markId&&(
+    <Modal title="Mark Deposit Received" onClose={()=>setMarkId(null)}>
+      <div style={{fontSize:14,color:MT,marginBottom:16}}>Which method did <b style={{color:BK}}>{appts.find(a=>a.id===markId)?.client}</b> use?</div>
+      {[{id:"zelle",label:"Zelle",icon:"💚",color:"#5b21b6",bg:"#ede9fe"},{id:"cashapp",label:"Cash App",icon:"💵",color:"#15803d",bg:"#dcfce7"},{id:"applepay",label:"Apple Pay",icon:"🍎",color:BK,bg:"#f3f4f6"}].map(m=>(
+        <button key={m.id} onClick={()=>manualDeposit(markId,m.label)} style={{display:"flex",alignItems:"center",gap:14,width:"100%",padding:"16px",borderRadius:14,border:`2px solid ${m.color}`,background:m.bg,marginBottom:12,textAlign:"left",minHeight:60}}>
+          <span style={{fontSize:28}}>{m.icon}</span><div style={{fontWeight:800,fontSize:15,color:m.color}}>{m.label}</div>
+          <span style={{marginLeft:"auto",fontWeight:800,color:m.color}}>✓</span>
+        </button>
+      ))}
+    </Modal>
+  )}
+
+  {depView&&<Modal title="Client Deposit View" onClose={()=>setDepView(null)}>
+    <div style={{fontSize:11,color:R,fontWeight:700,background:"#fff0f0",padding:"8px 12px",borderRadius:8,marginBottom:14}}>👁 Preview — what your client sees when they get your link</div>
+    <DepositView appt={depView} onConfirm={(id,method)=>{confirmDeposit(id,method);setTimeout(()=>setDepView(null),2000);}}/>
+  </Modal>}
+
+  {Object.keys(grouped).length===0&&cancelled.length===0?(
+    <div style={{background:WH,borderRadius:14,padding:32,textAlign:"center",boxShadow:"0 1px 6px rgba(0,0,0,0.07)"}}>
+      <div style={{fontSize:48,marginBottom:12}}>📅</div>
+      <div style={{fontSize:16,fontWeight:800,color:BK,marginBottom:8}}>No appointments yet</div>
+      <div style={{fontSize:13,color:MT,marginBottom:20}}>Tap + Book to schedule your first appointment.</div>
+    </div>
+  ):Object.entries(grouped).sort().map(([date,list])=>(
+    <div key={date} style={{marginBottom:20}}>
+      <div style={{fontSize:11,fontWeight:800,color:MT,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>
+        {new Date(date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}
+      </div>
+      {list.map(a=>{const dc=dcolor(a.ds);return(
+        <div key={a.id} style={{background:WH,borderRadius:14,padding:14,marginBottom:10,boxShadow:"0 1px 6px rgba(0,0,0,0.07)",borderLeft:`5px solid ${a.ds==="OwnerConfirmed"?BK:a.ds==="DepositPaid"?"#f59e0b":R}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+            <div>
+              <div style={{fontSize:16,fontWeight:800}}>{a.client}</div>
+              <div style={{fontSize:13,color:MT}}>{a.service}</div>
+              {a.vehicle&&<div style={{fontSize:12,color:MT}}>🚗 {a.vehicle}</div>}
+              {a.phone&&<div style={{fontSize:12,color:MT}}>📱 {a.phone}</div>}
+            </div>
+            <div style={{textAlign:"right"}}><div style={{fontSize:15,fontWeight:800}}>{a.time}</div><div style={{fontSize:11,color:MT}}>{a.dur}m</div></div>
+          </div>
+          <div style={{marginBottom:10}}><Chip label={dlabel(a.ds)} bg={dc.bg} c={dc.c} size={11}/>{a.dm&&<span style={{fontSize:11,color:MT,marginLeft:8}}>via {a.dm}</span>}</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {/* TEXT BUTTON - always show */}
+            {a.phone&&<Btn label="📱 Text" onClick={()=>onSms({type:"appt",appt:a,client:{name:a.client,phone:a.phone}})} bg="#1a1a2e" size={12} pad="10px 12px"/>}
+            {a.ds==="AwaitingDeposit"&&<>
+              <Btn label="👁 Preview" onClick={()=>setDepView(a)} bg={BK} size={12} pad="10px 12px"/>
+              <Btn label="💰 Mark Deposit" onClick={()=>setMarkId(a.id)} bg="#fef3c7" c="#92400e" size={12} pad="10px 12px"/>
+            </>}
+            {a.ds==="DepositPaid"&&<Btn label="✅ CONFIRM" onClick={()=>onOwnerConfirm(a.id)} bg={BK} size={13} pad="12px 14px"/>}
+            <Btn label="Reschedule" onClick={()=>setRescId({id:a.id,date:a.date,time:a.time})} bg="#ede9fe" c="#5b21b6" size={12} pad="10px 12px"/>
+            <Btn label="Cancel" onClick={()=>cancel(a.id)} bg="#fee2e2" c={R} size={12} pad="10px 12px"/>
+          </div>
+        </div>
+      );})}
+    </div>
+  ))}
+</div>
+```
+
+);
+}
+
+// ── CLIENTS ───────────────────────────────────────────────────────────────────
+function ClientsTab({clients,setClients,toast_,onSms}){
+const[showNew,setShowNew]=useState(false);
+const[form,setForm]=useState({name:””,phone:””,email:””,vehicle:””,status:“Lead”,tags:””});
+const add=()=>{
+if(!form.name||!form.phone){toast_(“Name and phone required”,“err”);return;}
+const c={id:“c”+Date.now(),name:form.name,phone:form.phone,email:form.email,vehicle:form.vehicle,status:form.status,tags:form.tags?form.tags.split(”,”).map(t=>t.trim()):[],av:form.name.split(” “).map(n=>n[0]).join(””).toUpperCase().slice(0,2)};
+setClients([…clients,c]);setForm({name:””,phone:””,email:””,vehicle:””,status:“Lead”,tags:””});setShowNew(false);toast_(“Client added!”);
+};
+return(
+<div style={{padding:16}}>
+<div style={{display:“flex”,justifyContent:“space-between”,alignItems:“center”,marginBottom:16}}>
+<div><b style={{fontSize:17}}>Clients</b><div style={{fontSize:11,color:MT}}>{clients.length} contact{clients.length!==1?“s”:””}</div></div>
+<Btn label=”+ Add Client” onClick={()=>setShowNew(true)} pad=“11px 16px” size={13}/>
+</div>
+{showNew&&(
+<Modal title=“Add New Client” onClose={()=>setShowNew(false)}>
+<Inp label="Full Name *"><input style={inp} value={form.name} onChange={e=>setForm({…form,name:e.target.value})} placeholder=“Client full name”/></Inp>
+<Inp label="Phone Number *"><input type=“tel” style={inp} value={form.phone} onChange={e=>setForm({…form,phone:e.target.value})} placeholder=“909-555-0000”/></Inp>
+<Inp label="Email"><input type=“email” style={inp} value={form.email} onChange={e=>setForm({…form,email:e.target.value})} placeholder=“email@example.com”/></Inp>
+<Inp label="Vehicle"><input style={inp} value={form.vehicle} onChange={e=>setForm({…form,vehicle:e.target.value})} placeholder=“Year Make Model”/></Inp>
+<Inp label="Status"><select style={inp} value={form.status} onChange={e=>setForm({…form,status:e.target.value})}><option>Lead</option><option>Active</option><option>Inactive</option></select></Inp>
+<Inp label="Tags (comma-separated)"><input style={inp} value={form.tags} onChange={e=>setForm({…form,tags:e.target.value})} placeholder=“VIP, Repeat, New”/></Inp>
+<Btn label=“Add Client” onClick={add} style={{width:“100%”,marginTop:4}}/>
+</Modal>
+)}
+{clients.length===0?(
+<div style={{background:WH,borderRadius:14,padding:32,textAlign:“center”,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”}}>
+<div style={{fontSize:48,marginBottom:12}}>👥</div>
+<div style={{fontSize:16,fontWeight:800,color:BK,marginBottom:8}}>No clients yet</div>
+<div style={{fontSize:13,color:MT,marginBottom:20}}>Add your first client to get started.</div>
+</div>
+):clients.map(c=>(
+<div key={c.id} style={{background:WH,borderRadius:14,padding:16,marginBottom:10,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”,borderTop:`3px solid ${c.status==="Active"?BK:c.status==="Lead"?R:BD}`}}>
+<div style={{display:“flex”,alignItems:“center”,gap:12,marginBottom:10}}>
+<div style={{width:46,height:46,borderRadius:12,background:R,display:“flex”,alignItems:“center”,justifyContent:“center”,fontWeight:900,fontSize:15,color:WH,flexShrink:0}}>{c.av}</div>
+<div style={{flex:1}}>
+<div style={{fontSize:16,fontWeight:800}}>{c.name}</div>
+<Chip label={c.status} bg={c.status===“Active”?BK:c.status===“Lead”?”#fee2e2”:GY} c={c.status===“Active”?WH:c.status===“Lead”?R:MT} size={11}/>
+</div>
+</div>
+<div style={{fontSize:13,color:MT,display:“flex”,flexDirection:“column”,gap:3,marginBottom:12}}>
+<div>📞 {c.phone}</div>
+{c.vehicle&&<div>🚗 {c.vehicle}</div>}
+{c.email&&<div>✉ {c.email}</div>}
+</div>
+{c.tags?.length>0&&<div style={{display:“flex”,flexWrap:“wrap”,gap:6,marginBottom:12}}>{c.tags.map(t=><span key={t} style={{background:GY,color:MT,fontSize:11,padding:“3px 10px”,borderRadius:20,fontWeight:700}}>{t}</span>)}</div>}
+<Btn label=“📱 Text Client” onClick={()=>onSms({client:c})} bg={BK} size={13} pad=“11px 16px”/>
+</div>
+))}
+</div>
+);
+}
+
+// ── INVOICES ──────────────────────────────────────────────────────────────────
+function InvsTab({invs,setInvs,clients,toast_,push,onSms}){
+const[editInv,setEditInv]=useState(null);
+const openEdit=inv=>setEditInv(JSON.parse(JSON.stringify(inv)));
+const save=()=>{setInvs(invs.map(i=>i.id===editInv.id?editInv:i));setEditInv(null);toast_(“Invoice saved!”);};
+const newInv=()=>{
+const id=“INV-”+String(invs.length+1).padStart(3,“0”);
+const today=new Date().toISOString().split(“T”)[0];
+const due=new Date(Date.now()+10*86400000).toISOString().split(“T”)[0];
+const inv={id,client:””,phone:””,vehicle:””,items:[{d:””,q:1,p:0}],status:“Draft”,date:today,due,notes:””};
+setInvs(p=>[…p,inv]);openEdit(inv);
+};
+const sendText=inv=>{
+setInvs(invs.map(i=>i.id===inv.id?{…i,status:“Sent”}:i));
+onSms({inv,client:{name:inv.client,phone:inv.phone}});
+push(“inv”,`📄 Invoice ${inv.id} sent to ${inv.client}`);
+toast_(`📱 Opening Messages to send invoice to ${inv.client}`);
+};
+const markPaid=id=>{setInvs(invs.map(i=>i.id===id?{…i,status:“Paid”}:i));toast_(“Marked as paid! 🎉”);};
+
+if(editInv){
+const t=editInv.items.reduce((s,i)=>s+i.q*i.p,0);
+return(
+<div style={{padding:16}}>
+<div style={{display:“flex”,alignItems:“center”,gap:12,marginBottom:16}}>
+<button onClick={()=>setEditInv(null)} style={{background:“none”,border:“none”,fontSize:22,color:R,fontWeight:800}}>←</button>
+<b style={{flex:1,fontSize:16}}>Editing {editInv.id}</b>
+<SecBtn label=“Discard” onClick={()=>setEditInv(null)} style={{padding:“8px 14px”,fontSize:13}}/>
+<Btn label="Save" onClick={save} pad="8px 14px" size={13}/>
+</div>
+<div style={{background:WH,borderRadius:16,padding:20,boxShadow:“0 2px 12px rgba(0,0,0,0.1)”,marginBottom:16}}>
+<div style={{display:“flex”,justifyContent:“space-between”,alignItems:“flex-start”,marginBottom:20,paddingBottom:16,borderBottom:`3px solid ${BK}`}}>
+<div style={{display:“flex”,alignItems:“center”,gap:10}}><Logo s={48}/><div><div style={{fontSize:18,fontWeight:900}}>VAL<span style={{color:R}}>EX</span></div><div style={{fontSize:10,fontWeight:800,letterSpacing:3}}>DETAILS</div><div style={{fontSize:9,color:MT}}>909-329-4531</div></div></div>
+<div style={{textAlign:“right”}}><div style={{fontSize:22,fontWeight:900,color:R}}>INVOICE</div><div style={{fontSize:14,fontWeight:800}}>{editInv.id}</div><div style={{fontSize:11,color:MT}}>{editInv.date}</div></div>
+</div>
+<div style={{marginBottom:16}}>
+<div style={{fontSize:9,fontWeight:900,color:R,textTransform:“uppercase”,letterSpacing:2,marginBottom:8}}>Bill To</div>
+<select style={{…inp,marginBottom:8}} value={editInv.client} onChange={e=>{const cl=clients.find(c=>c.name===e.target.value);setEditInv({…editInv,client:e.target.value,phone:cl?.phone||editInv.phone,vehicle:cl?.vehicle||editInv.vehicle||””});}}><option value="">Select client…</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select>
+<input style={{…inp,marginBottom:8}} value={editInv.phone||””} onChange={e=>setEditInv({…editInv,phone:e.target.value})} placeholder=“📱 Client phone”/>
+<input style={inp} value={editInv.vehicle||””} onChange={e=>setEditInv({…editInv,vehicle:e.target.value})} placeholder=“🚗 Vehicle”/>
+</div>
+{editInv.items.map((item,idx)=>(
+<div key={idx} style={{background:GY,borderRadius:10,padding:12,marginBottom:8}}>
+<div style={{display:“flex”,justifyContent:“space-between”,marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:MT}}>Line Item {idx+1}</span><button onClick={()=>setEditInv({…editInv,items:editInv.items.filter((_,i)=>i!==idx)})} style={{background:“none”,border:“none”,color:R,fontSize:16,fontWeight:900}}>✕</button></div>
+<input style={{…inp,marginBottom:8,background:WH}} value={item.d} onChange={e=>{const it=[…editInv.items];it[idx]={…it[idx],d:e.target.value};setEditInv({…editInv,items:it});}} placeholder=“Service description (e.g. Full Detail)”/>
+<div style={{display:“flex”,gap:10}}>
+<div style={{flex:1}}><div style={{fontSize:11,color:MT,marginBottom:4}}>Qty</div><input type=“number” style={{…inp,background:WH}} value={item.q} onChange={e=>{const it=[…editInv.items];it[idx]={…it[idx],q:Number(e.target.value)};setEditInv({…editInv,items:it});}}/></div>
+<div style={{flex:2}}><div style={{fontSize:11,color:MT,marginBottom:4}}>Price ($)</div><input type=“number” style={{…inp,background:WH}} value={item.p} onChange={e=>{const it=[…editInv.items];it[idx]={…it[idx],p:Number(e.target.value)};setEditInv({…editInv,items:it});}}/></div>
+<div style={{flex:1,display:“flex”,flexDirection:“column”,justifyContent:“flex-end”}}><div style={{fontSize:11,color:MT,marginBottom:4}}>Total</div><div style={{fontSize:16,fontWeight:900,color:R,paddingTop:13}}>${(item.q*item.p).toLocaleString()}</div></div>
+</div>
+</div>
+))}
+<button onClick={()=>setEditInv({…editInv,items:[…editInv.items,{d:””,q:1,p:0}]})} style={{width:“100%”,background:“none”,border:`2px dashed ${R}`,color:R,borderRadius:10,padding:12,fontSize:14,fontWeight:700,marginBottom:16}}>+ Add Service Line</button>
+<div style={{background:BK,borderRadius:12,padding:“14px 18px”,display:“flex”,justifyContent:“space-between”,alignItems:“center”,marginBottom:16}}><span style={{color:”#aaa”,fontSize:12,fontWeight:700,textTransform:“uppercase”,letterSpacing:1}}>Total Due</span><span style={{color:WH,fontSize:26,fontWeight:900}}>${t.toLocaleString()}</span></div>
+<textarea style={{…inp,minHeight:60,resize:“vertical”}} value={editInv.notes||””} onChange={e=>setEditInv({…editInv,notes:e.target.value})} placeholder=“Notes for client…”/>
+<div style={{borderTop:`2px solid ${BK}`,marginTop:16,paddingTop:14,display:“flex”,justifyContent:“space-between”,alignItems:“center”}}>
+<div style={{fontSize:10,color:MT,fontStyle:“italic”}}>Thank you for choosing Valex Details! — 909-329-4531</div>
+<Logo s={26}/>
+</div>
+</div>
+<Btn label={`📱 Save & Text Invoice to ${editInv.client||"Client"}`} onClick={()=>{save();sendText(editInv);}} style={{width:“100%”,marginBottom:10}}/>
+<SecBtn label=“Save Draft Only” onClick={save} style={{width:“100%”}}/>
+</div>
+);
+}
+
+return(
+<div style={{padding:16}}>
+<div style={{display:“flex”,justifyContent:“space-between”,alignItems:“center”,marginBottom:14}}>
+<div style={{display:“flex”,gap:8,flexWrap:“wrap”}}>{[“Draft”,“Sent”,“Paid”,“Overdue”].map(st=>{const ic=icolor(st);const count=invs.filter(i=>i.status===st).length;return count>0?<Chip key={st} label={`${st} ${count}`} bg={ic.bg} c={ic.c} size={11}/>:null;})}</div>
+<Btn label="+ New" onClick={newInv} pad="10px 14px" size={13}/>
+</div>
+{invs.length===0?(
+<div style={{background:WH,borderRadius:14,padding:32,textAlign:“center”,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”}}>
+<div style={{fontSize:48,marginBottom:12}}>📄</div>
+<div style={{fontSize:16,fontWeight:800,color:BK,marginBottom:8}}>No invoices yet</div>
+<div style={{fontSize:13,color:MT,marginBottom:20}}>Tap + New to create your first invoice.</div>
+</div>
+):invs.map(inv=>{const ic=icolor(inv.status);const t_=tot(inv);return(
+<div key={inv.id} style={{background:WH,borderRadius:14,padding:16,marginBottom:10,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”,borderLeft:`4px solid ${inv.status==="Paid"?BK:inv.status==="Overdue"?R:BD}`}}>
+<div style={{display:“flex”,justifyContent:“space-between”,alignItems:“flex-start”,marginBottom:10}}>
+<div><div style={{fontSize:10,color:MT,fontWeight:700}}>{inv.id}</div><div style={{fontSize:16,fontWeight:800,marginTop:2}}>{inv.client||”—”}</div>{inv.vehicle&&<div style={{fontSize:12,color:MT}}>🚗 {inv.vehicle}</div>}{inv.phone&&<div style={{fontSize:12,color:MT}}>📱 {inv.phone}</div>}<div style={{fontSize:11,color:MT}}>Due: {inv.due}</div></div>
+<div style={{textAlign:“right”}}><div style={{fontSize:22,fontWeight:900,color:R}}>${t_.toLocaleString()}</div><Chip label={inv.status} bg={ic.bg} c={ic.c} size={11}/></div>
+</div>
+<div style={{display:“flex”,gap:8,flexWrap:“wrap”}}>
+<Btn label=“Edit” onClick={()=>openEdit(inv)} bg={GY} c={BK} size={13} pad=“10px 14px” fw={700}/>
+{(inv.status===“Draft”||inv.status===“Sent”)&&<Btn label=“📱 Text Invoice” onClick={()=>sendText(inv)} bg=”#fee2e2” c={R} size={13} pad=“10px 14px” fw={700}/>}
+{inv.status===“Sent”&&<Btn label=“✓ Mark Paid” onClick={()=>markPaid(inv.id)} bg=”#dcfce7” c=”#15803d” size={13} pad=“10px 14px” fw={700}/>}
+</div>
+</div>
+);})}
+</div>
+);
+}
+
+// ── EARNINGS ──────────────────────────────────────────────────────────────────
+function EarnTab({invs}){
+const now=new Date();
+const[year,setYear]=useState(now.getFullYear());
+const[expMonth,setExpMonth]=useState(null);
+const[printMode,setPrintMode]=useState(false);
+const yrs=[…new Set([now.getFullYear(),…invs.filter(i=>i.status===“Paid”&&i.date).map(i=>new Date(i.date).getFullYear())])].sort((a,b)=>b-a);
+const mData=MONTHS.map((name,mi)=>{const paid=invs.filter(i=>{if(!i.date||i.status!==“Paid”)return false;const d=new Date(i.date);return d.getFullYear()===year&&d.getMonth()===mi;});const rev=paid.reduce((s,i)=>s+tot(i),0);return{name,rev,jobs:paid.length,invs:paid};});
+const yTotal=mData.reduce((s,m)=>s+m.rev,0);
+const yJobs=mData.reduce((s,m)=>s+m.jobs,0);
+const avg=yJobs>0?Math.round(yTotal/yJobs):0;
+const best=mData.reduce((b,m)=>m.rev>b.rev?m:b,{name:”—”,rev:0});
+const maxRev=Math.max(…mData.map(m=>m.rev),1);
+const allPaid=invs.filter(i=>i.status===“Paid”&&i.date&&new Date(i.date).getFullYear()===year).sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+if(printMode)return(
+<div style={{padding:20,background:WH,minHeight:“100vh”}}>
+<div style={{display:“flex”,justifyContent:“space-between”,alignItems:“flex-start”,marginBottom:24,paddingBottom:16,borderBottom:`3px solid ${BK}`}}>
+<div style={{display:“flex”,alignItems:“center”,gap:12}}><Logo s={50}/><div><div style={{fontSize:20,fontWeight:900}}>VAL<span style={{color:R}}>EX</span> DETAILS</div><div style={{fontSize:11,color:MT}}>Fontana, CA · 909-329-4531</div><div style={{fontSize:11,color:MT}}>Valeria2415@yahoo.com</div></div></div>
+<div style={{textAlign:“right”}}><div style={{fontSize:20,fontWeight:900,color:R}}>EARNINGS STATEMENT</div><div style={{fontSize:14,fontWeight:800}}>Tax Year {year}</div><div style={{fontSize:11,color:MT}}>{now.toLocaleDateString()}</div></div>
+</div>
+<div style={{display:“grid”,gridTemplateColumns:“1fr 1fr”,gap:10,marginBottom:20}}>
+{[{l:“Total Revenue”,v:`$${yTotal.toLocaleString()}`,c:R},{l:“Total Jobs”,v:yJobs,c:BK},{l:“Avg Per Job”,v:`$${avg.toLocaleString()}`,c:BK},{l:“Best Month”,v:best.rev>0?best.name.slice(0,3):”—”,c:R}].map(s=>(
+<div key={s.l} style={{border:`2px solid ${s.c}`,borderRadius:10,padding:“12px”,textAlign:“center”}}><div style={{fontSize:20,fontWeight:900,color:s.c}}>{s.v}</div><div style={{fontSize:10,fontWeight:700,color:MT,textTransform:“uppercase”,letterSpacing:1}}>{s.l}</div></div>
+))}
+</div>
+{mData.map((m,i)=>{const run=mData.slice(0,i+1).reduce((s,x)=>s+x.rev,0);return(
+<div key={m.name} style={{display:“flex”,justifyContent:“space-between”,padding:“9px 4px”,borderBottom:`1px solid ${BD}`,background:i%2===0?WH:GY}}>
+<span style={{fontSize:13,fontWeight:700,color:m.rev>0?BK:MT,width:90}}>{m.name}</span>
+<span style={{fontSize:12,color:m.jobs>0?BK:MT}}>{m.jobs>0?`${m.jobs} job${m.jobs>1?"s":""}` :”—”}</span>
+<span style={{fontSize:13,fontWeight:m.rev>0?900:400,color:m.rev>0?R:MT}}>{m.rev>0?`$${m.rev.toLocaleString()}`:”—”}</span>
+<span style={{fontSize:12,color:run>0?BK:MT}}>{run>0?`$${run.toLocaleString()}`:”—”}</span>
+</div>
+);})}
+<div style={{display:“flex”,justifyContent:“space-between”,padding:“12px 4px”,background:BK,marginTop:2,borderRadius:8}}>
+<span style={{fontSize:13,fontWeight:900,color:WH}}>TOTAL {year}</span>
+<span style={{fontSize:13,fontWeight:900,color:WH}}>{yJobs} jobs</span>
+<span style={{fontSize:15,fontWeight:900,color:R}}>${yTotal.toLocaleString()}</span>
+<span style={{fontSize:13,fontWeight:900,color:WH}}>${yTotal.toLocaleString()}</span>
+</div>
+{allPaid.length>0&&<><div style={{marginTop:20,fontWeight:900,fontSize:12,textTransform:“uppercase”,letterSpacing:1,marginBottom:10}}>Paid Invoice Detail</div>
+{allPaid.map(inv=>(
+<div key={inv.id} style={{padding:“9px 0”,borderBottom:`1px solid ${BD}`}}>
+<div style={{display:“flex”,justifyContent:“space-between”}}><div><span style={{fontWeight:700,fontSize:13}}>{inv.client}</span> <span style={{fontSize:11,color:MT}}>{inv.id}</span></div><span style={{fontSize:14,fontWeight:900,color:R}}>${tot(inv).toLocaleString()}</span></div>
+<div style={{fontSize:11,color:MT}}>{inv.date}{inv.vehicle?` · ${inv.vehicle}`:””}</div>
+<div style={{fontSize:11,color:MT}}>{inv.items.map(i=>i.d).join(”, “)}</div>
+</div>
+))}</>}
+<div style={{marginTop:20,padding:12,background:GY,borderRadius:8,fontSize:11,color:MT,textAlign:“center”}}>Valex Details · Fontana, CA · 909-329-4531 · Valeria2415@yahoo.com</div>
+<div className=“no-print” style={{display:“flex”,flexDirection:“column”,gap:10,marginTop:20}}>
+<Btn label=“🖨️ Print / Save as PDF” onClick={()=>window.print()} style={{width:“100%”}}/>
+<SecBtn label=“← Back” onClick={()=>setPrintMode(false)} style={{width:“100%”}}/>
+</div>
+</div>
+);
+
+return(
+<div style={{padding:16}}>
+<div style={{display:“flex”,justifyContent:“space-between”,alignItems:“center”,marginBottom:16,flexWrap:“wrap”,gap:10}}>
+<div><div style={{fontSize:17,fontWeight:900}}>💲 Earnings & Taxes</div><div style={{fontSize:11,color:MT}}>Track income · Print tax statements</div></div>
+<select value={year} onChange={e=>setYear(Number(e.target.value))} style={{…inp,width:“auto”,padding:“10px 14px”,fontWeight:700}}>{yrs.map(y=><option key={y} value={y}>{y}</option>)}</select>
+</div>
+<div style={{display:“flex”,gap:10,marginBottom:14}}>
+<Btn label=“🖨️ Statement” onClick={()=>setPrintMode(true)} bg={BK} size={13} pad=“12px 14px” style={{flex:1}}/>
+<Btn label=“📄 Tax Export” onClick={()=>setPrintMode(true)} size={13} pad=“12px 14px” style={{flex:1}}/>
+</div>
+{yTotal===0&&yJobs===0?(
+<div style={{background:WH,borderRadius:14,padding:32,textAlign:“center”,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”}}>
+<div style={{fontSize:48,marginBottom:12}}>💲</div>
+<div style={{fontSize:16,fontWeight:800,color:BK,marginBottom:8}}>No earnings yet for {year}</div>
+<div style={{fontSize:13,color:MT}}>Mark invoices as Paid to see your earnings here.</div>
+</div>
+):<>
+<div style={{display:“grid”,gridTemplateColumns:“1fr 1fr”,gap:10,marginBottom:14}}>
+{[{l:“Total Revenue”,v:`$${yTotal.toLocaleString()}`,c:R,i:“💰”},{l:“Total Jobs”,v:yJobs,c:BK,i:“🚗”},{l:“Avg Per Job”,v:`$${avg.toLocaleString()}`,c:BK,i:“📊”},{l:“Best Month”,v:best.rev>0?best.name.slice(0,3):”—”,c:R,i:“🏆”}].map(s=>(
+<div key={s.l} style={{background:WH,borderRadius:14,padding:14,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”,borderTop:`4px solid ${s.c}`}}>
+<div style={{fontSize:20,marginBottom:4}}>{s.i}</div>
+<div style={{fontSize:22,fontWeight:900,color:s.c}}>{s.v}</div>
+<div style={{fontSize:11,fontWeight:700,marginTop:1}}>{s.l}</div>
+</div>
+))}
+</div>
+<div style={{background:WH,borderRadius:14,padding:16,marginBottom:14,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”}}>
+<div style={{fontWeight:800,fontSize:14,marginBottom:14}}>Monthly Revenue — {year} (tap bar for detail)</div>
+<div style={{display:“flex”,alignItems:“flex-end”,gap:4,height:130,paddingBottom:24,borderBottom:`1px solid ${BD}`,position:“relative”}}>
+{mData.map((m,i)=>{const bh=m.rev>0?Math.max((m.rev/maxRev)*106,8):3;const active=expMonth===i;return(
+<div key={m.name} style={{flex:1,display:“flex”,flexDirection:“column”,alignItems:“center”,gap:2,cursor:m.rev>0?“pointer”:“default”}} onClick={()=>m.rev>0&&setExpMonth(active?null:i)}>
+{m.rev>0&&<div style={{fontSize:7,color:active?BK:R,fontWeight:800,textAlign:“center”}}>${m.rev>=1000?(m.rev/1000).toFixed(1)+“k”:m.rev}</div>}
+<div style={{width:“100%”,background:active?BK:m.rev>0?R:”#eee”,borderRadius:“4px 4px 0 0”,height:bh}}/>
+<div style={{fontSize:8,color:m.rev>0?BK:MT,fontWeight:m.rev>0?800:400}}>{m.name.slice(0,3).toUpperCase()}</div>
+</div>
+);})}
+</div>
+{expMonth!==null&&mData[expMonth]&&(
+<div style={{marginTop:14,background:”#fff8f8”,borderRadius:10,padding:14,border:`1px solid ${R}33`}}>
+<div style={{display:“flex”,justifyContent:“space-between”,marginBottom:12}}><b style={{fontSize:14}}>{mData[expMonth].name} {year}</b><div style={{display:“flex”,alignItems:“center”,gap:10}}><span style={{fontSize:16,fontWeight:900,color:R}}>${mData[expMonth].rev.toLocaleString()}</span><button onClick={()=>setExpMonth(null)} style={{background:“none”,border:“none”,fontSize:18,color:MT}}>✕</button></div></div>
+{mData[expMonth].invs.map(inv=>(
+<div key={inv.id} style={{display:“flex”,justifyContent:“space-between”,padding:“8px 0”,borderBottom:`1px solid ${BD}`}}>
+<div><div style={{fontSize:13,fontWeight:700}}>{inv.client}</div><div style={{fontSize:11,color:MT}}>{inv.id}</div></div>
+<span style={{fontSize:15,fontWeight:900,color:R}}>${tot(inv).toLocaleString()}</span>
+</div>
+))}
+</div>
+)}
+</div>
+<div style={{background:WH,borderRadius:14,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”,overflow:“hidden”,marginBottom:14}}>
+<div style={{padding:“14px 16px”,borderBottom:`1px solid ${BD}`,fontWeight:800,fontSize:14}}>Month-by-Month — {year}</div>
+{mData.map((m,i)=>{const run=mData.slice(0,i+1).reduce((s,x)=>s+x.rev,0);const isCur=new Date().getMonth()===i&&year===new Date().getFullYear();return(
+<button key={m.name} onClick={()=>m.rev>0&&setExpMonth(expMonth===i?null:i)} style={{display:“flex”,justifyContent:“space-between”,alignItems:“center”,width:“100%”,padding:“12px 16px”,background:expMonth===i?”#fff0f0”:isCur?”#fffbf0”:i%2===0?WH:GY,border:“none”,borderBottom:`1px solid ${BD}`,textAlign:“left”,minHeight:46}}>
+<div style={{flex:2,display:“flex”,alignItems:“center”,gap:8}}><span style={{fontSize:13,fontWeight:700,color:m.rev>0?BK:MT}}>{m.name.slice(0,3)}</span>{isCur&&<span style={{fontSize:8,fontWeight:800,background:R,color:WH,padding:“2px 6px”,borderRadius:10}}>NOW</span>}</div>
+<span style={{flex:1,textAlign:“center”,fontSize:12,color:m.jobs>0?BK:MT}}>{m.jobs||”—”}</span>
+<span style={{flex:2,textAlign:“right”,fontSize:14,fontWeight:m.rev>0?900:400,color:m.rev>0?R:MT}}>{m.rev>0?`$${m.rev.toLocaleString()}`:”—”}</span>
+<span style={{flex:2,textAlign:“right”,fontSize:12,color:run>0?BK:MT,paddingLeft:4}}>{run>0?`$${run.toLocaleString()}`:”—”}</span>
+</button>
+);})}
+<div style={{display:“flex”,justifyContent:“space-between”,padding:“14px 16px”,background:BK}}>
+<span style={{fontSize:13,fontWeight:900,color:WH,flex:2}}>TOTAL {year}</span>
+<span style={{fontSize:13,fontWeight:900,color:WH,flex:1,textAlign:“center”}}>{yJobs}</span>
+<span style={{fontSize:17,fontWeight:900,color:R,flex:2,textAlign:“right”}}>${yTotal.toLocaleString()}</span>
+<span style={{flex:2}}></span>
+</div>
+</div>
+<div style={{background:WH,borderRadius:14,padding:16,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”}}>
+<div style={{fontWeight:800,fontSize:14,marginBottom:12}}>📋 Quarterly Tax Estimates — {year}</div>
+<div style={{fontSize:12,color:MT,marginBottom:12}}>Set aside ~28% each quarter for self-employment taxes.</div>
+{[[“Q1 Jan–Mar”,0,2],[“Q2 Apr–Jun”,3,5],[“Q3 Jul–Sep”,6,8],[“Q4 Oct–Dec”,9,11]].map(([label,from,to])=>{const qr=mData.slice(from,to+1).reduce((s,m)=>s+m.rev,0);return(
+<div key={label} style={{display:“flex”,justifyContent:“space-between”,alignItems:“center”,padding:“10px 0”,borderBottom:`1px solid ${BD}`}}>
+<span style={{fontSize:13,fontWeight:700}}>{label}</span>
+<span style={{fontSize:15,fontWeight:900,color:R}}>${qr.toLocaleString()}</span>
+<span style={{fontSize:12,color:MT}}>Set aside: <b style={{color:BK}}>${Math.round(qr*0.28).toLocaleString()}</b></span>
+</div>
+);})}
+</div>
+</>}
+</div>
+);
+}
+
+// ── MORE TAB ──────────────────────────────────────────────────────────────────
+function MoreTab({wx,wxIdx,toast_,clients,onSms}){
+const[section,setSection]=useState(“menu”);
+const[wMsg,setWMsg]=useState(””);
+
+if(section===“weather”)return(
+<div style={{padding:16}}>
+<div style={{display:“flex”,alignItems:“center”,gap:12,marginBottom:16}}><button onClick={()=>setSection(“menu”)} style={{background:“none”,border:“none”,fontSize:22,color:BK}}>←</button><b style={{flex:1,fontSize:17}}>Weather — Fontana, CA</b></div>
+<div style={{background:WH,borderRadius:14,padding:16,marginBottom:14,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”}}>
+<div style={{display:“flex”,alignItems:“center”,gap:16,marginBottom:16}}><span style={{fontSize:56}}>{wx.i}</span><div><div style={{fontSize:36,fontWeight:900}}>{wx.t}°F</div><div style={{fontSize:14,color:”#555”}}>{wx.d}</div></div></div>
+<div style={{display:“flex”,gap:8,overflowX:“auto”,paddingBottom:4}}>
+{WX.map((h,i)=>(
+<div key={i} style={{display:“flex”,flexDirection:“column”,alignItems:“center”,gap:3,padding:“10px 8px”,borderRadius:10,background:i===wxIdx?”#fff0f0”:GY,border:i===wxIdx?`2px solid ${R}`:“2px solid transparent”,flexShrink:0,minWidth:58}}>
+<div style={{fontSize:9,fontWeight:800,color:MT}}>{i===wxIdx?“NOW”:h.h}</div>
+<div style={{fontSize:20}}>{h.i}</div>
+<div style={{fontSize:13,fontWeight:800}}>{h.t}°</div>
+</div>
+))}
+</div>
+</div>
+<div style={{background:WH,borderRadius:14,padding:16,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”}}>
+<div style={{fontWeight:800,fontSize:14,marginBottom:8}}>📱 Text Weather Alert to Clients</div>
+<div style={{fontSize:12,color:MT,marginBottom:12}}>Opens your Messages app to text active clients about weather.</div>
+<div style={{display:“flex”,flexDirection:“column”,gap:10}}>
+{clients.filter(c=>c.status===“Active”&&c.phone).map(c=>(
+<button key={c.id} onClick={()=>onSms({client:c,weatherAlert:{temp:wx.t,desc:wx.d}})} style={{display:“flex”,alignItems:“center”,gap:12,width:“100%”,padding:“14px”,borderRadius:12,border:`1px solid ${BD}`,background:WH,textAlign:“left”}}>
+<div style={{width:36,height:36,borderRadius:9,background:R,display:“flex”,alignItems:“center”,justifyContent:“center”,fontWeight:900,fontSize:12,color:WH,flexShrink:0}}>{c.av}</div>
+<div style={{flex:1}}><div style={{fontWeight:700,fontSize:14}}>{c.name}</div><div style={{fontSize:11,color:MT}}>{c.phone}</div></div>
+<span style={{fontSize:20,color:MT}}>📱</span>
+</button>
+))}
+{clients.filter(c=>c.status===“Active”&&c.phone).length===0&&<div style={{fontSize:13,color:MT,textAlign:“center”,padding:16}}>No active clients with phone numbers yet.</div>}
+</div>
+</div>
+</div>
+);
+
+if(section===“settings”)return(
+<div style={{padding:16}}>
+<div style={{display:“flex”,alignItems:“center”,gap:12,marginBottom:16}}><button onClick={()=>setSection(“menu”)} style={{background:“none”,border:“none”,fontSize:22,color:BK}}>←</button><b style={{flex:1,fontSize:17}}>Settings</b></div>
+<div style={{background:WH,borderRadius:14,padding:16,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”}}>
+{[{l:“Business”,v:“Valex Details”},{l:“Your Phone”,v:“909-329-4531”,n:“Tap 📱 Text buttons to message clients from your personal number”},{l:“Email”,v:“Valeria2415@yahoo.com”},{l:“Location”,v:“Fontana, CA · Inland Empire”},{l:“PIN”,v:“2415”}].map(s=>(
+<div key={s.l} style={{marginBottom:14,paddingBottom:14,borderBottom:`1px solid ${BD}`}}>
+<div style={{fontSize:10,fontWeight:800,color:R,textTransform:“uppercase”,letterSpacing:1,marginBottom:3}}>{s.l}</div>
+<div style={{fontSize:15,fontWeight:700}}>{s.v}</div>
+{s.n&&<div style={{fontSize:11,color:MT,marginTop:3}}>{s.n}</div>}
+</div>
+))}
+<div style={{marginBottom:14,paddingBottom:14,borderBottom:`1px solid ${BD}`}}>
+<div style={{fontSize:10,fontWeight:800,color:R,textTransform:“uppercase”,letterSpacing:1,marginBottom:12}}>Deposit Methods · $25</div>
+{[{icon:“💚”,label:“Zelle”,h:“909-329-4531”},{icon:“💵”,label:“Cash App”,h:”$ValexDetails · 909-329-4531”},{icon:“🍎”,label:“Apple Pay”,h:“909-329-4531”}].map(m=>(
+<div key={m.label} style={{display:“flex”,alignItems:“center”,gap:12,padding:“12px”,background:GY,borderRadius:10,marginBottom:8}}>
+<span style={{fontSize:22}}>{m.icon}</span>
+<div><div style={{fontWeight:800,fontSize:14}}>{m.label}</div><div style={{fontSize:12,color:MT}}>{m.h}</div></div>
+</div>
+))}
+</div>
+<div>
+<div style={{fontSize:10,fontWeight:800,color:R,textTransform:“uppercase”,letterSpacing:1,marginBottom:8}}>Messaging</div>
+<div style={{background:”#f0f9ff”,borderRadius:10,padding:14,border:“1px solid #bae6fd”}}>
+<div style={{fontSize:13,fontWeight:700,marginBottom:4}}>📱 How texting works:</div>
+<div style={{fontSize:12,color:MT,lineHeight:1.8}}>
+• Tap any <b>📱 Text</b> button in the app<br/>
+• Your iPhone Messages app opens<br/>
+• Message is pre-written, just tap Send<br/>
+• Client replies come to your regular Messages<br/>
+• Your personal number 909-329-4531 is used
+</div>
+</div>
+</div>
+</div>
+</div>
+);
+
+return(
+<div style={{padding:16}}>
+<div style={{fontSize:17,fontWeight:900,marginBottom:16}}>More</div>
+{[{id:“weather”,icon:“☁”,label:“Weather & Alerts”,sub:“Fontana forecast · Text weather alerts”},{id:“settings”,icon:“⚙”,label:“Settings”,sub:“Business info · How messaging works”}].map(s=>(
+<button key={s.id} onClick={()=>setSection(s.id)} style={{display:“flex”,alignItems:“center”,gap:14,width:“100%”,background:WH,border:“none”,borderRadius:14,padding:“16px”,marginBottom:10,textAlign:“left”,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”,minHeight:64}}>
+<span style={{fontSize:28,width:40,textAlign:“center”}}>{s.icon}</span>
+<div><div style={{fontSize:16,fontWeight:700}}>{s.label}</div><div style={{fontSize:12,color:MT}}>{s.sub}</div></div>
+<span style={{marginLeft:“auto”,fontSize:22,color:”#ccc”}}>›</span>
+</button>
+))}
+<div style={{background:WH,borderRadius:14,padding:16,boxShadow:“0 1px 6px rgba(0,0,0,0.07)”}}>
+<div style={{display:“flex”,alignItems:“center”,gap:12}}>
+<div style={{width:44,height:44,borderRadius:12,background:R,display:“flex”,alignItems:“center”,justifyContent:“center”,fontWeight:900,fontSize:16,color:WH}}>V</div>
+<div><div style={{fontWeight:800,fontSize:15}}>Valeria</div><div style={{fontSize:12,color:MT}}>Valex Details · 909-329-4531</div></div>
+</div>
+</div>
+</div>
+);
+}
+
+// ── ROOT ──────────────────────────────────────────────────────────────────────
+function Root(){
+const[authed,setAuthed]=useState(()=>!!sessionStorage.getItem(SES));
+if(!authed)return <Login onLogin={()=>setAuthed(true)}/>;
+return <App/>;
+}
+ReactDOM.render(<Root/>,document.getElementById(“root”));
+</script>
+
+</body>
+</html>
